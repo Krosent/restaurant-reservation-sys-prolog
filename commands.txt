@@ -1,0 +1,11 @@
+# Get all data about sentence:
+sentence(Date, NumberOfSeats, Menu, Time, [9, people, on, 18,th, of, march], []).
+
+# We test whether constraint work for one hour
+test_constraint_time_and_seats:-
+    constraint_time_and_seats(19, [_,_,_,_,_,_,_,_,_]).
+
+# We test whether constraints work for the whole day
+test_occupation_for_day:-
+    restaraunt_occupation(Occupation_List),
+    constraint_day(Occupation_List). 
