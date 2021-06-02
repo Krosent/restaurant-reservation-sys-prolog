@@ -92,29 +92,6 @@ date_numbr(Date) --> [Date, '/', Y], {integer(Date)}.
 % Months atomic representation.
 month_str --> [march].
 
-% Display Results in a human readible way is here: 
-%%%%%% Starts %%%%%%
-display_results(DayPlan):-
-    write("Welcome to our resto\n"),
-    nth0(0, DayPlan, Time19),
-    nth0(1, DayPlan, Time20),
-    nth0(2, DayPlan, Time21),
-    nth0(3, DayPlan, Time22),
-    nth0(4, DayPlan, Time23),
-
-
-% A dummy sample of day plan in order to test display_results predicate.
-dayplanSample([
-               [[1, 2, 4], [2, 1, 3], [0, 0, 0]],
-               [[1, 2, 4], [0, 0, 0], [0, 0, 0]],
-               [[0, 0, 0], [3, 2, 3], [0, 0, 0]],
-               [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-               [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-            ]).
-
-
-%%%%%% Ends %%%%%%
-
 % Restaraunt terms
 
 % The list of orders. Translated from natural text into the list. We use this list to apply our DCG grammar to extract data.
@@ -123,12 +100,6 @@ orders([    [table, for, 4, at, 20, :, 00, on, 18, march],
             [3, people, on, 18,th, of, march],
             [reserve,us,a,table,on,march,18,for,a,party,of,2,for,the,theatre,menu]
         ]).
-
-order0([9, people, on, 18,th, of, march]).
-order1([reserve,us,a,table,on,march,18,for,a,party,of,2,for,the,theatre,menu]).
-order2([3, people, on, 18,th, of, march]).
-order3([book, 2, of, us, in, on, 18, march, at, 21, :, 00]).
-order4([table, for, 3, at, 20, :, 00, on, 18, march]).
 
 % Predicate used to get seats from list of orders.
 seats([], _).
@@ -250,16 +221,29 @@ constraint_tables([Table1, Table2, Table3], NumberOfSeats):-
 collect_order_time([], TimeRest).
 collect_order_time([DaySchedule], [ThisTime|TimeRest]):-
     nth0(1, DaySchedule, ThisTime).
-    %var(ThisTime).
 collect_order_time([DaySchedule|DaySchedules], [ThisTime|TimeRest]):-
     nth0(1, DaySchedule, ThisTime),
     collect_order_time(DaySchedules, TimeRest).
 
-run_prog(DaySchedule):-
-    constraint_schedule(DaySchedule).
+run_prog:-
+    constraint_schedule(DaySchedule),
+    display_schedule(DaySchedule), !.
 
 label_order_time(Vars):-
     labeling([ff], Vars).
+
+display_schedule(Orders):-
+    maplist(printout, Orders).
+  
+printout(Order):-
+    Order = [Menu, Time, Date, [Table1, Table2, Table3]],
+    write("Order at: " + Time + " | "),
+    write(" Duration is: " + Menu + " | "),
+    write(" on March" + Date + " | "),
+    write(" Table for 2 persons is occupied: " + Table1 + " | "),
+    write(" Table for 3 persons is occupied: " + Table2 + " | "),
+    write(" Table for 4 persons is occupied: " + Table3),
+    write("\n").
 
 % The idea is to have a matrix of orders where we have rows that represent time and columns that represent tables.
 % The intersection of row_x_column gives us an order id. By knowing the order we should now which order at what time is reserved and for 
