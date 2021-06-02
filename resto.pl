@@ -1,6 +1,15 @@
+#!/usr/local/bin/swipl -q
+% (c) Artyom Kuznetsov
+
+:- initialization main.
 :- use_module(library(clpfd)).
 
-% DCG Parser
+main:-
+    format('Boot program\n', []),
+    run_prog,
+    format('End program\n', []).
+
+% //////////////////// DEFINITE CLAUSE GRAMMAR IMPLEMENTATION ////////////////////
 % #### 
 %##### We have several variations of sentences, each has different structure. 
 % #### 
@@ -92,88 +101,12 @@ date_numbr(Date) --> [Date, '/', Y], {integer(Date)}.
 % Months atomic representation.
 month_str --> [march].
 
-% Restaraunt terms
-
 % The list of orders. Translated from natural text into the list. We use this list to apply our DCG grammar to extract data.
 orders([    [table, for, 4, at, 20, :, 00, on, 18, march],
             [book, 2, of, us, in, on, 18, march, at, 21, :, 00],
             [3, people, on, 18,th, of, march],
-            [reserve,us,a,table,on,march,18,for,a,party,of,2,for,the,theatre,menu]
+            [reserve,us,a,table,on,march,18,for,a,party,of,9,for,the,theatre,menu]
         ]).
-
-% Predicate used to get seats from list of orders.
-seats([], _).
-seats([Order], [NumberOfSeats|Seats]):-
-    sentence(Date, NumberOfSeats, Menu, Time, Order, []).
-seats([Order|RestOrders], [NumberOfSeats|Seats]):-
-    sentence(Date, NumberOfSeats, Menu, Time, Order, []),
-    seats(RestOrders, Seats).
-
-% Predicate used to get list of durations for lunch. 
-durations([], _).
-durations([Order], [Menu|Durations]):-
-    sentence(Date, NumberOfSeats, Menu, Time, Order, []).
-durations([Order|RestOrders], [Menu|Durations]):-
-    sentence(Date, NumberOfSeats, Menu, Time, Order, []),
-    durations(RestOrders, Durations).
-
-% Predicate to get dates from orders.
-dates([], _).
-dates([Order], [Date|Dates]):-
-    sentence(Date, NumberOfSeats, Menu, Time, Order, []).
-dates([Order|RestOrders], [Date|Dates]):-
-    sentence(Date, NumberOfSeats, Menu, Time, Order, []),
-    dates(RestOrders, Dates).
-
-% Predicate to get reservation time. If times is not specified the value is -1.
-times([], _).
-times([Order], [Time|Times]):-
-    sentence(Date, NumberOfSeats, Menu, Time, Order, []).
-times([Order|RestOrders], [Time|Times]):-
-    sentence(Date, NumberOfSeats, Menu, Time, Order, []),
-    times(RestOrders, Times).
-
-% Generate orders indexes. 
-% Inspired by solution: https://stackoverflow.com/a/10209665/8709654
-generate_idxs(Orders, Indexes):-
-    length(Orders, OrdersLength),
-    findall(Num, between(1, OrdersLength, Num), Indexes).
-
-% Order id, duration for order pair.
-generate_idx_duration_pair(Orders, IdxDurationPair):-
-    generate_idxs(Orders, Indexes),
-    durations(Orders, Durations),
-    pairs_keys_values(IdxDurationPair, Indexes, Durations).
-
-% Order id, number of seats pair.
-generate_idx_seats_pair(Orders, IdxSeatsPair):-
-    generate_idxs(Orders, Indexes),
-    seats(Orders, Seats),
-    pairs_keys_values(IdxSeatsPair, Indexes, Seats).
-
-    % Order id, time pair.
-generate_idx_times_pair(Orders, IdxTimesPair):-
-    generate_idxs(Orders, Indexes),
-    times(Orders, Times),
-    pairs_keys_values(IdxTimesPair, Indexes, Times).
-
-
-% Test predicate that is used to get data from orders in a list format for each type of data. 
-test_orders_conversion(Seats, Durations, Dates, Times, Indexes):-
-    orders(Orders),
-    seats(Orders, Seats),
-    durations(Orders, Durations),
-    dates(Orders, Dates),
-    times(Orders, Times),
-    generate_idxs(Orders, Indexes).
-
-% Test predicate that is used to test how pairs creation works. 
-test_pairs_generation(IdxDurationPairs, IdxSeatsPairs, IdxTimesPairs):-
-    orders(Orders),
-    generate_idx_duration_pair(Orders, IdxDurationPairs),
-    generate_idx_seats_pair(Orders, IdxSeatsPairs),
-    generate_idx_times_pair(Orders, IdxTimesPairs).
-
 
 % day schedule is a list of lists. [[Menu, Time, Date, Tables]].
 % Tables = [Table1, Table2, Table3].
@@ -186,6 +119,7 @@ constraint_schedule(DaySchedule):-
     constraint_orders(DaySchedule, Orders),
     collect_order_time(DaySchedule, OrderTimeList),
     exclude(ground, OrderTimeList, OnlyVars),
+    % constraint_tables_between_clients(DaySchedule, DaySchedule),
     label_order_time(OnlyVars).
 
 constraint_orders([], []).
@@ -217,6 +151,34 @@ constraint_tables([Table1, Table2, Table3], NumberOfSeats):-
     (NumberOfSeats #= 8 #==> Table1 #= 1 #/\ Table2 #= 1 #/\ Table3 #=1),
     (NumberOfSeats #= 9 #==> Table1 #= 1 #/\ Table2 #= 1 #/\ Table3 #=1).
 
+constraint_tables_between_clients([], AllOrders).
+constraint_tables_between_clients([Order], AllOrders):-
+    constraint_one_table_between_clients(Order, AllOrders).
+constraint_tables_between_clients([Order|Orders], AllOrders):-
+        constraint_one_table_between_clients(Order, AllOrders),
+        constraint_tables_between_clients(Orders, AllOrders).
+
+constraint_one_table_between_clients(CurrentOrder, []).
+constraint_one_table_between_clients(CurrentOrder, [Order]):-
+    innerpart_of_constraint_one_table_pred(CurrentOrder, Order).
+constraint_one_table_between_clients(CurrentOrder, [Order|Orders]):-
+    innerpart_of_constraint_one_table_pred(CurrentOrder, Order),
+    constraint_one_table_between_clients(CurrentOrder, Orders).
+
+innerpart_of_constraint_one_table_pred(CurrentOrder, OneOrder):-
+    CurrentOrder = [Menu1, Time1, Date1, [Table01, Table02, Table03]],
+    OneOrder = [Menu2, Time2, Date2, [Table21, Table22, Table23]],
+    Order1DinnerTimeStart #= Time1, 
+    Order1DinnerTimeEnd #= Time1 + Menu1,
+    Order2DinnerTimeStart #= Time2, 
+    Order2DinnerTimeEnd #= Time2 + Menu2,
+    (Order1DinnerTimeStart in Order2DinnerTimeStart..Order2DinnerTimeEnd #==> 
+                    (Table01 #= 1 #/\ Table21 #= 0 #/\ Table02 #=1 #/\ Table22 #= 0 #/\ Table03 #= 1 #/\ Table23 #= 0) #\/ 
+                    (Table01 #= 0 #/\ Table21 #= 1 #/\ Table02 #=0 #/\ Table22 #= 1 #/\ Table03 #= 0 #/\ Table23 #= 1)),
+    (Order2DinnerTimeStart in Order1DinnerTimeStart..Order1innerTimeEnd #==> 
+                    (Table01 #= 1 #/\ Table21 #= 0 #/\ Table02 #=1 #/\ Table22 #= 0 #/\ Table03 #= 1 #/\ Table23 #= 0) #\/ 
+                     (Table01 #= 0 #/\ Table21 #= 1 #/\ Table02 #=0 #/\ Table22 #= 1 #/\ Table03 #= 0 #/\ Table23 #= 1)).
+
 
 collect_order_time([], TimeRest).
 collect_order_time([DaySchedule], [ThisTime|TimeRest]):-
@@ -227,120 +189,23 @@ collect_order_time([DaySchedule|DaySchedules], [ThisTime|TimeRest]):-
 
 run_prog:-
     constraint_schedule(DaySchedule),
-    display_schedule(DaySchedule), !.
+    display_schedule(DaySchedule), !. % this cut is allowed in the project description, for printout only. 
 
 label_order_time(Vars):-
     labeling([ff], Vars).
 
 display_schedule(Orders):-
-    maplist(printout, Orders).
+    format('Hello to our restaurant! \n', []),
+    format('Status for tables represent whether table is occupied. 1 indicates that is occupied, 0 indicates otherwise.\n', []),
+    format('------------\n', []),
+    format('Orders list:\n', []),
+    maplist(printout, Orders),
+    format('------------\n', []).
   
 printout(Order):-
     Order = [Menu, Time, Date, [Table1, Table2, Table3]],
-    write("Order at: " + Time + " | "),
-    write(" Duration is: " + Menu + " | "),
-    write(" on March" + Date + " | "),
-    write(" Table for 2 persons is occupied: " + Table1 + " | "),
-    write(" Table for 3 persons is occupied: " + Table2 + " | "),
-    write(" Table for 4 persons is occupied: " + Table3),
-    write("\n").
-
-% The idea is to have a matrix of orders where we have rows that represent time and columns that represent tables.
-% The intersection of row_x_column gives us an order id. By knowing the order we should now which order at what time is reserved and for 
-% what duration.
-
-% % days represented as rows.
-% constraint_days(DayPlan):-
-%     length(DayPlan, 5).
-
-% % tables represented as columns.
-% constraint_tables(DayPlan):-
-%     transpose(DayPlan, Tables), % get columns.
-%     length(Tables, 3). % each hour has only 3 tables available. 
-
-% % intersection between column and row is a cell or order.
-% constraint_orders(DayPlan):-
-%     length(DayPlan, NumberOfOrders),
-%     append(DayPlan, AllOrders),
-%     constraint_orders_recursion(AllOrders, NumberOfOrders).
-%     %maplist(constraint_order, AllOrders).
-%     % AllOrders ins [OrderId, Duration].
-
-% % this is a intermediate predicate that is used inside constrain_orders/1 to recursively constraint all orders.
-% constraint_orders_recursion([], _).
-% constraint_orders_recursion([Order], NumberOfOrders):-
-%     constraint_order(Order, NumberOfOrders).
-% constraint_orders_recursion([Order|Orders], NumberOfOrders):-
-%     constraint_order(Order, NumberOfOrders),
-%     constraint_orders_recursion(Orders, NumberOfOrders).
-
-% % constraint individual order.
-% constraint_order([OrderId, Duration, Persons], NumberOfOrders):-
-%     length(DayPlan, NumberOfOrders),
-%     OrderId in 1..NumberOfOrders,
-%     Duration in 1..2.
-
-% constraint_orders_byseats(DayPlan, Seats):-
-%     % get different tables for hours. 
-    
-%     % transpose(DayPlan, [Table4Seats, Table3Seats, Table2Seats])
-%     transpose(DayPlan, [Table4Seats, Table3Seats, Table2Seats]),
-%     % find all orders where we have 4 seats
-%     %seats([Order|RestOrders], [NumberOfSeats|Seats]),
-%     orders(Orders),
-%     generate_idx_seats_pair(Orders, IdxSeats),
-%     pairs_keys_values(IdxSeats, Idx, Seats).
-    
-% testik(Idx):-    
-%     valid_resto_plan(Plan),
-%     constraint_orders_byseats(Plan, Idx).
-
-% valid_resto_plan([
-%     [[Order01, Duration01, Persons01], [OrderId02, Duration02, Persons02], [OrderId03, Duration03, Persons03]],
-%     [[OrderId11, Duration11, Persons11], [OrderId12, Duration12, Persons12], [OrderId13, Duration13, Persons13]],
-%     [[OrderId21, Duration21, Persons21], [OrderId22, Duration22, Persons22], [OrderId3, Duration23, Persons23]],
-%     [[OrderId31, Duration31, Persons31], [OrderId32, Duration32, Persons32], [OrderId33, Duration33, Persons33]],
-%     [[OrderId41, Duration41, Persons41], [OrderId2, Duration42, Persons42], [OrderId3, Duration43, Persons43]]
-%     ]).    
-
-% constraint_resto_orders(DayPlan, [], [], []).
-% constraint_resto_orders(DayPlan, [IdxDurationPair], [IdxSeatsPair], [IdxTimesPair]):-
-%     constraint_resto_order(DayPlan, IdxDurationPair, IdxSeatsPair, IdxTimesPair).
-% constraint_resto_orders(DayPlan, [IdxDurationPair|IdxDurationPairs], [IdxSeatsPair|IdxSeatsPairs], [IdxTimesPair|IdxTimesPairs]):-
-%     constraint_resto_order(DayPlan, IdxDurationPair, IdxSeatsPair, IdxTimesPair),
-%     constraint_resto_orders(DayPlan, IdxDurationPairs, IdxSeatsPairs, IdxTimesPairs).
-
-% % Constraint orders against users orders.  
-% constraint_resto_order(DayPlan, Id-Duration, Id-Seats, Id-Time):-
-%     % Reference to all data we have from orders. May be used for building constraints
-%     test_pairs_generation(IdxDurationPairs, IdxSeatsPairs, IdxTimesPairs),
-%     orders(Orders),
-%     times(Orders, Times).
-    % Means if the time was mentioned occupy the place with such order. 
-    %( (Time #> 0) #==> (element(TimeInd, Times, Time) #/\ element(TimeInd, DayPlan, TheDateList) #/\ element(0, TheDateList, Ord) #/\ Ord #= [Id, Duration, Seats]) ).
-    % ( Time #> 0 #==> ConstrainedTime1 #= Time1 ).
-    
-
-% Entry point predicate. 
-resto(DayPlan, Day):-
-    valid_resto_plan(DayPlan),
-    constraint_days(DayPlan),
-    constraint_tables(DayPlan),
-    constraint_orders(DayPlan),
-    test_pairs_generation(IdxDurationPairs, IdxSeatsPairs, IdxTimesPairs).
-    % constraint_resto_orders(DayPlan, IdxDurationPairs, IdxSeatsPairs, IdxTimesPairs).
-
-
-% constraint_seats(DayPlan):-
-%     length(DayPlan, 5),
-%     generate_idx_seats_pair(Orders, IdxSeatsPairs),
-%     pairs_keys_values(?Pairs, ?Keys, ?Values).
-
-
-
-
-
-
+    format('- Order time: ~d:00 on ~d March, with duration of ~d hours. Status of table for 2 people: ~d, Status of table for 3 people: ~d, Status of table for 4 people: ~d \n',
+            [Time, Date, Menu, Table1, Table2, Table3]).
 
 
 % ========================================================================================================
@@ -349,97 +214,3 @@ resto(DayPlan, Day):-
 
 % Special thanks for this resource that helped to clarify some interesting parts of Prolog:
 % ref: https://github.com/Anniepoo/swiplclpfd/blob/master/clpfd.adoc
-
-% Warning
-% ///// Code that is a prototype of what I was trying to do during development. Has nothing to do with above implementation.  /////
-
-% one version
-% app(Resto_Status, SomeOut):-
-%     general_constraint(Resto_Status),
-%     constraint_seats(Resto_Status, SomeOut).
-
-% constraint_seats(Resto_Status, SomeOut):-
-%     element(2, [Time_3, Seats_3], SomeOut).
-    
-% general_constraint(Resto_Status):-
-%     length(Resto_Status, 5),
-%     Resto_Status = [
-%                     [Time_1, Seats_1],
-%                     [Time_2, Seats_2],
-%                     [Time_3, Seats_3],
-%                     [Time_4, Seats_4],
-%                     [Time_5, Seats_5]
-%                     ],
-%     Time_1 in 19..23,
-%     Time_2 in 19..23,
-%     Time_3 in 19..23,
-%     Time_4 in 19..23,
-%     Time_5 in 19..23,
-%     Seats_1 in 0..9,
-%     Seats_2 in 0..9,
-%     Seats_3 in 0..9,
-%     Seats_4 in 0..9,
-%     Seats_5 in 0..9,
-%     all_different([Time_1, Time_2, Time_3, Time_4, Time_5]).
-%     %labeling([min(Time_1), max(Time_5)], [Time_1, Time_2, Time_3, Time_4, Time_5]).
-
-
-% % another version
-% orders_constraint([], ConstraintList).
-% orders_constraint([Order], [ConstraintedTime|Rest]):-
-%     order_constraint(Order, ConstraintedTime).
-% orders_constraint([Order|RestOrders], Out):-
-%     order_constraint(Order, ConstraintedTime),
-%     orders_constraint(RestOrders, [ConstraintedTime|Out]).
-
-% display_order(ConstrainedTime):-
-%     format(ConstrainedTime).
-
-% order_constraint(Order, ConstrainedTime, NumberOfSeats, Date):-
-%     sentence(Date, NumberOfSeats, Menu, Time, Order, []),
-%     NumberOfSeats in 1..9,
-%     Date in 1..31,
-%     ( Time #< 0 #==> ConstrainedTime in 19..23 ) #/\ ( Time #> 0 #==> ConstrainedTime #= Time ).
-
-% tt(Menu1, Menu2, UpdTime1, UpdTime2, NumberOfSeats1, NumberOfSeats2):-
-%     order1(Ord1),
-%     order2(Ord2),
-%     sentence(Date1, NumberOfSeats1, Menu1, Time1, Ord1, []),
-%     sentence(Date2, NumberOfSeats2, Menu2, Time2, Ord2, []),
-%     NumberOfSeats1 in 1..9,
-%     NumberOfSeats2 in 1..9,
-%     (UpdTime1 #= UpdTime2-2 #\/ UpdTime1 #= UpdTime2+2),
-%     ( Time1 #< 0 #==> UpdTime1 in 19..23 ) #/\ ( Time1 #> 0 #==> UpdTime1 #= Time1 ),
-%     ( Time2 #< 0 #==> UpdTime2 in 19..23 ) #/\ ( Time2 #> 0 #==> UpdTime2 #= Time2 ).
-
-% % third iteration
-% experiment3(NumberOfSeats1, NumberOfSeats2, Menu1, Menu2, Time1, Time2, Time0):-
-%     order0(Ord0),
-%     order1(Ord1),
-%     order2(Ord2),
-%     order_between_constraint(Ord0, Ord1, NumberOfSeats0, NumberOfSeats1, Menu0, Menu1, Time0, Time1),
-%     order_between_constraint(Ord1, Ord2, NumberOfSeats1, NumberOfSeats2, Menu1, Menu2, Time1, Time2).
-%     % labeling([min(Time0), max(Time2)], [Time0, Time1, Time2]).
-%     %order_between_constraint(Ord1, Ord3, NumberOfSeats1, NumberOfSeats3, Menu1, Menu3, Time1, Time3),
-%     %order_between_constraint(Ord2, Ord3, NumberOfSeats2, NumberOfSeats3, Menu2, Menu3, Time2, Time3),
-    
-% % This predicate sets constraints between two orders. 
-% order_between_constraint(Ord1, Ord2, NumberOfSeats1, NumberOfSeats2, Menu1, Menu2, ConstrainedTime1, ConstrainedTime2):-
-%     % Get Orders from DCG engine.
-%     sentence(Date1, NumberOfSeats1, Menu1, Time1, Ord1, []),
-%     sentence(Date2, NumberOfSeats2, Menu2, Time2, Ord2, []),
-%     % Constraint range of seats
-%     NumberOfSeats1 in 1..9,
-%     NumberOfSeats2 in 1..9,
-%     Menu1 in 1..2,
-%     Menu2 in 1..2,
-%     % Set constraint if time was not specified:
-%     ( Time1 #< 0 #==> ConstrainedTime1 in 19..22 ) #/\ ( Time1 #> 0 #==> ConstrainedTime1 #= Time1 ),
-%     ( Time2 #< 0 #==> ConstrainedTime2 in 19..22 ) #/\ ( Time2 #> 0 #==> ConstrainedTime2 #= Time2 ),
-%     (ConstrainedTime1 + Menu1  #=< 23),
-%     (ConstrainedTime2 + Menu2  #=< 23),
-%     % Constraint time should be in period between 19 and 23 oclock. Also, orders can be made at the same time if enough seats are available.
-%     ((NumberOfSeats1 + NumberOfSeats2 #> 9) #==> (ConstrainedTime1 #= ConstrainedTime2 - Menu1) #\/ (ConstrainedTime1 #= ConstrainedTime2 + Menu1)),
-%     ((NumberOfSeats1 + NumberOfSeats2 #> 9) #==> (ConstrainedTime2 #= ConstrainedTime1 - Menu2) #\/ (ConstrainedTime2 #= ConstrainedTime1 + Menu2)).
-
-
